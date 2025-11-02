@@ -1,0 +1,252 @@
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Preferido · Nuture — AWS Outage Simulation (R&D Build)</title>
+  <meta name="description" content="Comprehensive, client‑side AWS outage simulator for R&D and investment research. Vanilla JS only." />
+  <style>
+    :root{--bg:#0b1020;--panel:#0f162e;--muted:#8aa0b8;--text:#e7eef8;--accent:#79ffe1;--ok:#22c55e;--warn:#f59e0b;--bad:#ef4444;--line:#1e293b}
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Helvetica, Arial, sans-serif;background:var(--bg);color:var(--text)}
+    header,footer{padding:14px 18px;border-bottom:1px solid var(--line)}
+    footer{border-top:1px solid var(--line);border-bottom:none;color:var(--muted)}
+    main{padding:18px;max-width:1280px;margin:0 auto}
+    .grid{display:grid;gap:14px}
+    @media(min-width:1100px){.grid-3{grid-template-columns:360px 1fr 360px}}
+    .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px;box-shadow:0 8px 30px rgba(0,0,0,.25)}
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .stack{display:grid;gap:10px}
+    label{font-size:13px;color:var(--muted)}
+    select,input,button,textarea{border-radius:12px;border:1px solid #243049;background:#0b1220;color:var(--text);padding:10px 12px}
+    input[type=range]{width:160px}
+    button{cursor:pointer}
+    button.primary{background:linear-gradient(135deg,#0ea5e9,#22d3ee);border-color:transparent;color:#00131a;font-weight:700}
+    button.ghost{background:transparent}
+    .kpi{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .kpi .b{font-size:22px;font-weight:800}
+    .pill{display:inline-flex;align-items:center;gap:8px;border:1px solid #334155;border-radius:999px;padding:6px 10px;font-size:12px}
+    .pill.ok{border-color:var(--ok);color:var(--ok)}
+    .pill.warn{border-color:var(--warn);color:var(--warn)}
+    .pill.bad{border-color:var(--bad);color:var(--bad)}
+    .log{font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;background:#0b1220;border:1px dashed #334155;border-radius:12px;padding:10px;height:200px;overflow:auto}
+    .timeline{display:grid;grid-template-columns:repeat(6,1fr);gap:6px}
+    .step{height:10px;border-radius:6px;background:#0b2430;border:1px solid #153040}
+    .step.active{background:var(--accent)}
+    .note{font-size:12px;color:var(--muted)}
+    .tabs{display:flex;gap:8px;margin:6px 0 10px 0}
+    .tab{padding:6px 10px;border:1px solid #26324a;border-radius:10px;background:#0b1220;cursor:pointer;font-size:12px}
+    .tab.active{outline:2px solid #22d3ee}
+    .hide{display:none !important}
+    .svgwrap{background:#0b1220;border:1px dashed #334155;border-radius:12px;padding:8px;height:220px}
+    svg{width:100%;height:100%}
+    textarea{width:100%;min-height:120px;resize:vertical}
+  </style>
+</head>
+<body>
+  <header class="row" aria-label="Page header">
+    <h1 style="margin:0;font-size:18px;letter-spacing:.3px;">Preferido · Nuture — AWS Outage Simulation</h1>
+    <span class="pill" id="statusPill" aria-live="polite">Idle</span>
+    <div class="note">R&D build • Financial & Infra research • Vanilla JS</div>
+  </header>
+
+  <main class="grid grid-3">
+    <!-- Left: Controls -->
+    <section class="card stack" aria-labelledby="controlsTitle">
+      <h2 id="controlsTitle" style="margin-top:0">Scenario</h2>
+
+      <div class="tabs" role="tablist">
+        <button class="tab active" id="tabPreset" aria-controls="panelPreset" role="tab" aria-selected="true">Presets</button>
+        <button class="tab" id="tabArch" aria-controls="panelArch" role="tab" aria-selected="false">Architecture</button>
+        <button class="tab" id="tabCosts" aria-controls="panelCosts" role="tab" aria-selected="false">Costs</button>
+      </div>
+
+      <div id="panelPreset" role="tabpanel" class="stack">
+        <div class="row">
+          <label for="preset">Preset</label>
+          <select id="preset">
+            <option value="iam-global">IAM Control Plane (global) · auth failures</option>
+            <option value="s3-regional">S3 us-east-1 · elevated 5xx</option>
+            <option value="rds-failover">RDS Multi-AZ failover stall</option>
+            <option value="route53">Route53 partial DNS resolution</option>
+            <option value="lambda-api">Lambda + API Gateway throttle</option>
+          </select>
+        </div>
+        <div class="row">
+          <label for="region">Region</label>
+          <select id="region">
+            <option>us-east-1</option>
+            <option>us-west-2</option>
+            <option>eu-west-1</option>
+            <option>ap-south-1</option>
+          </select>
+          <label for="severity">Severity</label>
+          <select id="severity">
+            <option value="minor">Minor</option>
+            <option value="major" selected>Major</option>
+            <option value="critical">Critical</option>
+          </select>
+          <label for="duration">Outage (min)</label>
+          <input type="range" id="duration" min="1" max="480" value="45" />
+          <output id="durationOut" for="duration">45</output>
+        </div>
+      </div>
+
+      <div id="panelArch" role="tabpanel" class="stack hide">
+        <div class="row">
+          <label for="az">AZ Redundancy</label>
+          <select id="az">
+            <option value="1">Single-AZ</option>
+            <option value="2" selected>Multi-AZ (2)</option>
+            <option value="3">Multi-AZ (3)</option>
+          </select>
+          <label for="xregion">Cross-Region DR</label>
+          <select id="xregion">
+            <option value="none">None</option>
+            <option value="warm" selected>Warm standby</option>
+            <option value="active">Active-active</option>
+          </select>
+        </div>
+        <div class="row">
+          <label><input type="checkbox" id="depS3" checked /> Depend on S3</label>
+          <label><input type="checkbox" id="depRDS" checked /> Depend on RDS</label>
+          <label><input type="checkbox" id="depIAM" /> Depend on IAM</label>
+          <label><input type="checkbox" id="depDNS" /> Depend on Route53</label>
+        </div>
+        <div class="svgwrap" aria-label="Dependency graph">
+          <svg viewBox="0 0 600 220" role="img" aria-labelledby="graphTitle">
+            <title id="graphTitle">Service dependencies</title>
+            <defs>
+              <marker id="arrow" markerWidth="10" markerHeight="10" refX="6" refY="3" orient="auto" markerUnits="strokeWidth">
+                <path d="M0,0 L0,6 L6,3 z"></path>
+              </marker>
+            </defs>
+            <rect x="30" y="30" width="140" height="40" rx="8" fill="#16203e" stroke="#2a3d6a"></rect>
+            <text x="100" y="55" text-anchor="middle" font-size="12" fill="#cfe3ff">App (Preferido · Nuture)</text>
+
+            <rect x="230" y="20" width="140" height="40" rx="8" fill="#16203e" stroke="#2a3d6a"></rect>
+            <text x="300" y="45" text-anchor="middle" font-size="12" fill="#cfe3ff">S3</text>
+
+            <rect x="230" y="80" width="140" height="40" rx="8" fill="#16203e" stroke="#2a3d6a"></rect>
+            <text x="300" y="105" text-anchor="middle" font-size="12" fill="#cfe3ff">RDS</text>
+
+            <rect x="230" y="140" width="140" height="40" rx="8" fill="#16203e" stroke="#2a3d6a"></rect>
+            <text x="300" y="165" text-anchor="middle" font-size="12" fill="#cfe3ff">IAM</text>
+
+            <rect x="430" y="100" width="140" height="40" rx="8" fill="#16203e" stroke="#2a3d6a"></rect>
+            <text x="500" y="125" text-anchor="middle" font-size="12" fill="#cfe3ff">Route53</text>
+
+            <g id="edges" stroke="#5872a0" stroke-width="1.6" fill="none" marker-end="url(#arrow)">
+              <path id="edgeAppS3" d="M170,50 C200,50 200,40 230,40"></path>
+              <path id="edgeAppRDS" d="M170,50 C200,50 200,100 230,100"></path>
+              <path id="edgeAppIAM" d="M170,50 C200,50 200,160 230,160"></path>
+              <path id="edgeAppDNS" d="M170,50 C250,50 430,120 430,120"></path>
+            </g>
+          </svg>
+        </div>
+      </div>
+
+      <div id="panelCosts" role="tabpanel" class="stack hide">
+        <div class="row">
+          <label for="rev">Rev loss / min</label>
+          <input id="rev" type="number" inputmode="decimal" min="0" step="1" value="7000" />
+          <label for="fixed">Fixed cost / hr</label>
+          <input id="fixed" type="number" min="0" step="10" value="1200" />
+        </div>
+        <div class="row">
+          <label for="var">Variable cost factor</label>
+          <input type="range" id="var" min="0" max="100" value="25" />
+          <output id="varOut">25%</output>
+          <label for="penalty">SLA penalty / hr</label>
+          <input id="penalty" type="number" min="0" step="10" value="500" />
+        </div>
+        <div class="row">
+          <label for="slo">SLO (30‑day) availability</label>
+          <select id="slo">
+            <option value="99.0">99.0%</option>
+            <option value="99.5">99.5%</option>
+            <option value="99.9" selected>99.9%</option>
+            <option value="99.99">99.99%</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:10px">
+        <button class="primary" id="runBtn">Run Simulation</button>
+        <button class="ghost" id="resetBtn">Reset</button>
+        <button class="ghost" id="exportBtn" title="Download report">Export Report</button>
+      </div>
+
+      <p class="note">Deterministic model. No network. Suitable for demos and internal R&D.</p>
+    </section>
+
+    <!-- Middle: Timeline & Log -->
+    <section class="card" aria-labelledby="simTitle">
+      <h2 id="simTitle" style="margin-top:0">Incident Flow</h2>
+      <div class="timeline" aria-hidden="true">
+        <div class="step" id="t0"></div>
+        <div class="step" id="t1"></div>
+        <div class="step" id="t2"></div>
+        <div class="step" id="t3"></div>
+        <div class="step" id="t4"></div>
+        <div class="step" id="t5"></div>
+      </div>
+      <p class="note">Trigger → Blast radius → Degradation → Failover → Recovery → Postmortem</p>
+      <div class="log" id="log" role="log" aria-live="polite" aria-atomic="false"></div>
+
+      <h3 style="margin:12px 0 6px 0">Error Budget & Backlog</h3>
+      <div class="row">
+        <div class="pill ok" id="pillBudget">Budget burn: 0%</div>
+        <div class="pill warn" id="pillBacklog">Backlog: 0 req</div>
+        <div class="pill bad" id="pillBreach">SLO breach: no</div>
+      </div>
+    </section>
+
+    <!-- Right: KPIs -->
+    <aside class="card" aria-labelledby="kpiTitle">
+      <h2 id="kpiTitle" style="margin-top:0">KPIs & Targets</h2>
+      <div class="kpi">
+        <div>
+          <div class="b" id="uptime">—</div>
+          <div class="note">Est. uptime (24h)</div>
+        </div>
+        <div>
+          <div class="b" id="loss">$0</div>
+          <div class="note">Revenue loss</div>
+        </div>
+        <div>
+          <div class="b" id="rto">—</div>
+          <div class="note">RTO</div>
+        </div>
+        <div>
+          <div class="b" id="rpo">—</div>
+          <div class="note">RPO</div>
+        </div>
+        <div>
+          <div class="b" id="ttf">—</div>
+          <div class="note">TTFailover</div>
+        </div>
+        <div>
+          <div class="b" id="ttd">—</div>
+          <div class="note">TTDetect</div>
+        </div>
+        <div>
+          <div class="b" id="ttr">—</div>
+          <div class="note">TTRecover</div>
+        </div>
+        <div>
+          <div class="b" id="tco">$0</div>
+          <div class="note">TCO (incident)</div>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <footer>
+    <small>© 2025 Preferido · Nuture R&D. Illustrative only; not an AWS status monitor.</small>
+  </footer>
+
+  <script src="./app_full.js" defer></script>
+</body>
+</html>
